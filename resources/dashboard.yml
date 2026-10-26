@@ -1,0 +1,7 @@
+resources:
+  dashboards:
+    fabs_dashboard:
+      display_name: Metrology — Process & Review
+      file_path: ./fabs_metrology.lvdash.json
+      warehouse_id: ${var.warehouse_id}
+      embed_credentials: true

@@ -1,0 +1,17 @@
+resources:
+  pipelines:
+    fabs_ingest:
+      name: fabs-image-ingest
+      catalog: ${var.catalog}
+      schema: ${var.schema}
+      serverless: true
+      continuous: false
+      channel: CURRENT
+      photon: true
+      libraries:
+        - file:
+            path: ../src/pipeline/ingest_images.py
+      configuration:
+        fabs.landing_path: /Volumes/${var.catalog}/${var.schema}/landing
+      tags:
+        project: fabs-metrology

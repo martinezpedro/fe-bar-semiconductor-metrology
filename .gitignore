@@ -1,0 +1,11 @@
+# local environments and Databricks CLI state
+.venv/
+.databricks/
+.databricks.*/
+__pycache__/
+*.pyc
+.DS_Store
+# scratch probes from the build
+scratch/
+# generated (rebuilt by genie/build_space.py)
+genie/space.json

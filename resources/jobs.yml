@@ -1,0 +1,186 @@
+x-ml-cluster: &ml_cluster
+  job_cluster_key: ml_cpu
+  new_cluster:
+    spark_version: 16.4.x-cpu-ml-scala2.12
+    node_type_id: Standard_DS3_v2
+    num_workers: 0
+    data_security_mode: SINGLE_USER
+    spark_conf:
+      spark.master: "local[*, 4]"
+      spark.databricks.cluster.profile: singleNode
+    custom_tags:
+      ResourceClass: SingleNode
+      project: fabs-metrology
+    azure_attributes:
+      availability: ON_DEMAND_AZURE
+
+# Serverless PyTorch (CPU). The classic ML-runtime cluster above is faster per run but
+# fe-vm's eastus subscription hit regional core quota and SKU stockouts, so ML tasks run here.
+x-torch-env: &torch_env
+  environment_key: torch
+  spec:
+    environment_version: "4"
+    dependencies:
+      - torch==2.6.0
+      - mlflow>=3.1
+
+x-lakebase-env: &lakebase_env
+  environment_key: lakebase
+  spec:
+    environment_version: "4"
+    dependencies:
+      - psycopg[binary]>=3.2
+
+resources:
+  jobs:
+    # ------------------------------------------------------------------ one-time setup
+    fabs_setup:
+      name: fabs-01-setup-seed-train
+      description: >
+        One-time setup: Lakebase schema + seed users, generate the synthetic image history
+        with a labeled training subset, ingest it, and train/register the model.
+      max_concurrent_runs: 1
+      environments:
+        - *lakebase_env
+        - *torch_env
+        - environment_key: default
+          spec:
+            environment_version: "4"
+      parameters:
+        - name: n_images
+          default: "1500"
+      tasks:
+        - task_key: setup_lakebase
+          environment_key: lakebase
+          spark_python_task:
+            python_file: ../src/jobs/setup_lakebase.py
+            parameters:
+              - --lakebase_endpoint=${var.lakebase_endpoint}
+              - --lakebase_host=${var.lakebase_host}
+              - --admin_email=${workspace.current_user.userName}
+              - --app_sp_client_id=${var.app_sp_client_id}
+        - task_key: generate_history
+          environment_key: default
+          spark_python_task:
+            python_file: ../src/generate_images.py
+            parameters:
+              - --out_root=/Volumes/${var.catalog}/${var.schema}/landing/instruments
+              - --label_root=/Volumes/${var.catalog}/${var.schema}/curated/labels
+              - --n={{job.parameters.n_images}}
+              - --seed=20260801
+              - --days=60
+              - --label_fraction=0.7
+              - --batch_id=HISTORY
+              - --inject_bad=3
+        - task_key: ingest
+          depends_on: [{task_key: generate_history}]
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.fabs_ingest.id}
+            full_refresh: true
+        - task_key: train
+          depends_on: [{task_key: ingest}]
+          environment_key: torch
+          spark_python_task:
+            python_file: ../src/ml/train.py
+            parameters:
+              - --catalog=${var.catalog}
+              - --schema=${var.schema}
+              - --epochs=12
+              - --max_labeled=900
+      tags:
+        project: fabs-metrology
+
+    # ------------------------------------------------------------------ processing
+    fabs_processing:
+      name: fabs-02-image-processing
+      description: >
+        Ingest + validate new images, run PyTorch segmentation/classification on CPU,
+        persist masks/measurements, publish to the Lakebase review queue, refresh analytics.
+        Triggered by new instrument files, by the review app (submission_id), or for reprocessing (image_ids).
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+      trigger:
+        pause_status: PAUSED
+        file_arrival:
+          url: /Volumes/${var.catalog}/${var.schema}/landing/instruments/
+          min_time_between_triggers_seconds: 300
+          wait_after_last_change_seconds: 120
+      environments:
+        - *lakebase_env
+        - *torch_env
+      parameters:
+        - name: submission_id
+          default: ""
+        - name: image_ids
+          default: ""
+        - name: reprocess_all
+          default: "false"
+      tasks:
+        - task_key: ingest
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.fabs_ingest.id}
+        - task_key: infer
+          depends_on: [{task_key: ingest}]
+          environment_key: torch
+          spark_python_task:
+            python_file: ../src/ml/infer.py
+            parameters:
+              - --catalog=${var.catalog}
+              - --schema=${var.schema}
+              - --submission_id={{job.parameters.submission_id}}
+              - --image_ids={{job.parameters.image_ids}}
+              - --reprocess_all={{job.parameters.reprocess_all}}
+              - --job_run_id={{job.run_id}}
+        - task_key: publish_review
+          depends_on: [{task_key: infer}]
+          environment_key: lakebase
+          spark_python_task:
+            python_file: ../src/jobs/publish_review.py
+            parameters:
+              - --catalog=${var.catalog}
+              - --schema=${var.schema}
+              - --processing_run_id={{tasks.infer.values.processing_run_id}}
+              - --submission_id={{job.parameters.submission_id}}
+              - --job_run_id={{job.run_id}}
+              - --lakebase_endpoint=${var.lakebase_endpoint}
+              - --lakebase_host=${var.lakebase_host}
+        - task_key: refresh_analytics
+          depends_on: [{task_key: infer}]
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ../src/sql/gold_views.sql
+            parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+      tags:
+        project: fabs-metrology
+
+    # ------------------------------------------------------------------ instrument simulator
+    fabs_simulate_drop:
+      name: fabs-03-simulate-instrument-drop
+      description: Writes a fresh batch of SEM images into landing/instruments (fires the processing job's file-arrival trigger).
+      max_concurrent_runs: 1
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"
+        timezone_id: America/Los_Angeles
+        pause_status: PAUSED
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "4"
+      parameters:
+        - name: n_images
+          default: "40"
+      tasks:
+        - task_key: generate_drop
+          environment_key: default
+          spark_python_task:
+            python_file: ../src/generate_images.py
+            parameters:
+              - --out_root=/Volumes/${var.catalog}/${var.schema}/landing/instruments
+              - --n={{job.parameters.n_images}}
+              - --days=1
+      tags:
+        project: fabs-metrology

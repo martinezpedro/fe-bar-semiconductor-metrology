@@ -1,0 +1,19 @@
+command: ["streamlit", "run", "app.py", "--server.headless", "true"]
+
+env:
+  - name: CATALOG
+    value: ws_azure_classic_eastus_pedro
+  - name: SCHEMA
+    value: fabs_metrology
+  - name: DATABRICKS_WAREHOUSE_ID
+    valueFrom: sql-warehouse
+  - name: PROCESSING_JOB_ID
+    valueFrom: processing-job
+  - name: LLM_ENDPOINT
+    valueFrom: llm-endpoint
+  - name: GENIE_SPACE_ID
+    valueFrom: genie-space
+  - name: LAKEBASE_ENDPOINT
+    value: projects/fabs-metrology/branches/production/endpoints/primary
+  - name: DASHBOARD_URL
+    value: ""

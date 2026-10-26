@@ -1,0 +1,40 @@
+bundle:
+  name: fabs-metrology
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    default: ws_azure_classic_eastus_pedro
+  schema:
+    default: fabs_metrology
+  warehouse_id:
+    default: d508a88f62d6950a
+  lakebase_project:
+    default: fabs-metrology
+  lakebase_endpoint:
+    default: projects/fabs-metrology/branches/production/endpoints/primary
+  lakebase_host:
+    default: ep-empty-sound-e9hz04ms.database.eastus.azuredatabricks.net
+  llm_endpoint:
+    default: databricks-claude-sonnet-5-5
+  genie_space_id:
+    description: Genie space the app's "Ask Genie" page talks to (see genie/space_id.txt)
+    default: 01f1cc30d4d910538989cd372e3f44c1
+  app_sp_client_id:
+    description: App service principal client id (used by setup_lakebase for Lakebase grants)
+    default: 3a630645-574e-499c-9b86-dc4e87e09fbb
+
+targets:
+  fe-vm:
+    default: true
+    workspace:
+      profile: fe-vm-azure
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+
+sync:
+  exclude:
+    - .venv
+    - scratch
+    - "**/__pycache__"

@@ -1,0 +1,1344 @@
+{
+ "datasets": [
+  {
+   "name": "kpis",
+   "displayName": "kpis",
+   "queryLines": [
+    "SELECT count(*) AS images,\n",
+    "       avg(CASE WHEN disposition = 'FLAGGED' THEN 1 ELSE 0 END) AS flagged_rate,\n",
+    "       avg(CASE WHEN cd_spec_status = 'FAIL' THEN 1 ELSE 0 END) AS cd_fail_rate,\n",
+    "       count(DISTINCT lot_id) AS lots\n",
+    "FROM ws_azure_classic_eastus_pedro.fabs_metrology.v_image_results\n"
+   ]
+  },
+  {
+   "name": "trend",
+   "displayName": "trend",
+   "queryLines": [
+    "SELECT capture_date, experiment_id, sum(mean_cd_nm * images) / sum(images) AS mean_cd_nm, sum(images) AS images\n",
+    "FROM ws_azure_classic_eastus_pedro.fabs_metrology.v_daily_cd_trend GROUP BY ALL\n"
+   ]
+  },
+  {
+   "name": "tool_trend",
+   "displayName": "tool_trend",
+   "queryLines": [
+    "SELECT capture_date, tool_id, sum(mean_cd_nm * images) / sum(images) AS mean_cd_nm, sum(images) AS images\n",
+    "FROM ws_azure_classic_eastus_pedro.fabs_metrology.v_daily_cd_trend GROUP BY ALL\n"
+   ]
+  },
+  {
+   "name": "tool_matching",
+   "displayName": "tool_matching",
+   "queryLines": [
+    "SELECT * FROM ws_azure_classic_eastus_pedro.fabs_metrology.v_tool_matching\n"
+   ]
+  },
+  {
+   "name": "lots",
+   "displayName": "lots",
+   "queryLines": [
+    "SELECT * FROM ws_azure_classic_eastus_pedro.fabs_metrology.v_lot_summary\n"
+   ]
+  },
+  {
+   "name": "defects",
+   "displayName": "defects",
+   "queryLines": [
+    "SELECT experiment_id, predicted_class, count(*) AS images\n",
+    "FROM ws_azure_classic_eastus_pedro.fabs_metrology.v_image_results WHERE predicted_class <> 'none' GROUP BY ALL\n"
+   ]
+  },
+  {
+   "name": "outliers",
+   "displayName": "outliers",
+   "queryLines": [
+    "SELECT * FROM ws_azure_classic_eastus_pedro.fabs_metrology.v_cd_outliers\n"
+   ]
+  },
+  {
+   "name": "runs",
+   "displayName": "runs",
+   "queryLines": [
+    "SELECT * FROM ws_azure_classic_eastus_pedro.fabs_metrology.processing_runs\n"
+   ]
+  },
+  {
+   "name": "quarantine",
+   "displayName": "quarantine",
+   "queryLines": [
+    "SELECT reject_reason, count(*) AS files FROM ws_azure_classic_eastus_pedro.fabs_metrology.image_quarantine GROUP BY ALL\n"
+   ]
+  },
+  {
+   "name": "review_state",
+   "displayName": "review_state",
+   "queryLines": [
+    "SELECT CASE state WHEN 'PENDING_REVIEW' THEN 'Pending review' WHEN 'PENDING_APPROVAL' THEN 'Pending approval'\n",
+    "  WHEN 'APPROVED_GOOD' THEN 'Approved / Good' WHEN 'REJECTED_BAD' THEN 'Rejected / Bad' ELSE 'Needs rework' END AS state,\n",
+    "  count(*) AS images FROM ws_azure_classic_eastus_pedro.fabs_review.v_review_items_current GROUP BY ALL\n"
+   ]
+  },
+  {
+   "name": "agreement",
+   "displayName": "agreement",
+   "queryLines": [
+    "SELECT disposition AS model_disposition, coalesce(reviewer_verdict, 'NOT YET') AS reviewer_verdict, count(*) AS images\n",
+    "FROM ws_azure_classic_eastus_pedro.fabs_review.v_review_items_current WHERE reviewed_at IS NOT NULL OR approved_at IS NOT NULL GROUP BY ALL\n"
+   ]
+  },
+  {
+   "name": "actions",
+   "displayName": "actions",
+   "queryLines": [
+    "SELECT date(action_ts) AS day, action, count(*) AS actions\n",
+    "FROM ws_azure_classic_eastus_pedro.fabs_review.v_review_actions WHERE acting_role <> 'system' GROUP BY ALL\n"
+   ]
+  },
+  {
+   "name": "action_log",
+   "displayName": "action_log",
+   "queryLines": [
+    "SELECT action_ts, image_id, actor_email, acting_role, action, from_state, to_state, reason_code, comment, sod_override\n",
+    "FROM ws_azure_classic_eastus_pedro.fabs_review.v_review_actions WHERE acting_role <> 'system'\n"
+   ]
+  }
+ ],
+ "pages": [
+  {
+   "name": "process",
+   "displayName": "Process & metrology",
+   "layout": [
+    {
+     "widget": {
+      "name": "hdr",
+      "multilineTextboxSpec": {
+       "lines": [
+        "## Metrology \u2014 CH1 contact holes\nSpec 60 \u00b1 6 nm (LSL 54 / USL 66). Synthetic POC data."
+       ]
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 0,
+      "width": 6,
+      "height": 2
+     }
+    },
+    {
+     "widget": {
+      "name": "k_img",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "kpis",
+         "disaggregated": true,
+         "fields": [
+          {
+           "name": "images",
+           "expression": "`images`"
+          }
+         ]
+        }
+       }
+      ],
+      "spec": {
+       "version": 2,
+       "widgetType": "counter",
+       "encodings": {
+        "value": {
+         "fieldName": "images",
+         "displayName": "Images processed"
+        }
+       },
+       "frame": {
+        "showTitle": true,
+        "title": "Images processed"
+       }
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 2,
+      "width": 2,
+      "height": 3
+     }
+    },
+    {
+     "widget": {
+      "name": "k_flag",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "kpis",
+         "disaggregated": true,
+         "fields": [
+          {
+           "name": "flagged_rate",
+           "expression": "`flagged_rate`"
+          }
+         ]
+        }
+       }
+      ],
+      "spec": {
+       "version": 2,
+       "widgetType": "counter",
+       "encodings": {
+        "value": {
+         "fieldName": "flagged_rate",
+         "displayName": "Flagged by model",
+         "format": {
+          "type": "number-percent",
+          "decimalPlaces": {
+           "type": "exact",
+           "places": 1
+          }
+         }
+        }
+       },
+       "frame": {
+        "showTitle": true,
+        "title": "Flagged by model"
+       }
+      }
+     },
+     "position": {
+      "x": 2,
+      "y": 2,
+      "width": 2,
+      "height": 3
+     }
+    },
+    {
+     "widget": {
+      "name": "k_fail",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "kpis",
+         "disaggregated": true,
+         "fields": [
+          {
+           "name": "cd_fail_rate",
+           "expression": "`cd_fail_rate`"
+          }
+         ]
+        }
+       }
+      ],
+      "spec": {
+       "version": 2,
+       "widgetType": "counter",
+       "encodings": {
+        "value": {
+         "fieldName": "cd_fail_rate",
+         "displayName": "CD out of spec",
+         "format": {
+          "type": "number-percent",
+          "decimalPlaces": {
+           "type": "exact",
+           "places": 1
+          }
+         }
+        }
+       },
+       "frame": {
+        "showTitle": true,
+        "title": "CD out of spec"
+       }
+      }
+     },
+     "position": {
+      "x": 4,
+      "y": 2,
+      "width": 2,
+      "height": 3
+     }
+    },
+    {
+     "widget": {
+      "name": "trend",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "trend",
+         "disaggregated": true,
+         "fields": [
+          {
+           "name": "capture_date",
+           "expression": "`capture_date`"
+          },
+          {
+           "name": "mean_cd_nm",
+           "expression": "`mean_cd_nm`"
+          },
+          {
+           "name": "experiment_id",
+           "expression": "`experiment_id`"
+          }
+         ]
+        }
+       }
+      ],
+      "spec": {
+       "version": 3,
+       "widgetType": "line",
+       "frame": {
+        "showTitle": true,
+        "title": "Daily mean CD by experiment"
+       },
+       "encodings": {
+        "x": {
+         "fieldName": "capture_date",
+         "scale": {
+          "type": "temporal"
+         },
+         "displayName": "Capture date"
+        },
+        "y": {
+         "fieldName": "mean_cd_nm",
+         "scale": {
+          "type": "quantitative",
+          "domain": {
+           "min": 52,
+           "max": 68
+          }
+         },
+         "displayName": "Mean CD (nm)"
+        },
+        "color": {
+         "fieldName": "experiment_id",
+         "scale": {
+          "type": "categorical",
+          "mappings": [
+           {
+            "value": "EXP-ETCH-A",
+            "color": "#2a78d6"
+           },
+           {
+            "value": "EXP-ETCH-B",
+            "color": "#eb6834"
+           },
+           {
+            "value": "EXP-LITHO-C",
+            "color": "#1baf7a"
+           }
+          ]
+         },
+         "displayName": "experiment_id"
+        }
+       }
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 5,
+      "width": 6,
+      "height": 7
+     }
+    },
+    {
+     "widget": {
+      "name": "tool_trend",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "tool_trend",
+         "disaggregated": true,
+         "fields": [
+          {
+           "name": "capture_date",
+           "expression": "`capture_date`"
+          },
+          {
+           "name": "mean_cd_nm",
+           "expression": "`mean_cd_nm`"
+          },
+          {
+           "name": "tool_id",
+           "expression": "`tool_id`"
+          }
+         ]
+        }
+       }
+      ],
+      "spec": {
+       "version": 3,
+       "widgetType": "line",
+       "frame": {
+        "showTitle": true,
+        "title": "Daily mean CD by SEM tool (all experiments)"
+       },
+       "encodings": {
+        "x": {
+         "fieldName": "capture_date",
+         "scale": {
+          "type": "temporal"
+         },
+         "displayName": "Capture date"
+        },
+        "y": {
+         "fieldName": "mean_cd_nm",
+         "scale": {
+          "type": "quantitative",
+          "domain": {
+           "min": 52,
+           "max": 68
+          }
+         },
+         "displayName": "Mean CD (nm)"
+        },
+        "color": {
+         "fieldName": "tool_id",
+         "scale": {
+          "type": "categorical",
+          "mappings": [
+           {
+            "value": "SEM-01",
+            "color": "#2a78d6"
+           },
+           {
+            "value": "SEM-02",
+            "color": "#eb6834"
+           }
+          ]
+         },
+         "displayName": "tool_id"
+        }
+       }
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 12,
+      "width": 3,
+      "height": 7
+     }
+    },
+    {
+     "widget": {
+      "name": "tool_tbl",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "tool_matching",
+         "disaggregated": true,
+         "fields": [
+          {
+           "name": "experiment_id",
+           "expression": "`experiment_id`"
+          },
+          {
+           "name": "sem01_mean_cd_nm",
+           "expression": "`sem01_mean_cd_nm`"
+          },
+          {
+           "name": "sem02_mean_cd_nm",
+           "expression": "`sem02_mean_cd_nm`"
+          },
+          {
+           "name": "sem02_minus_sem01_nm",
+           "expression": "`sem02_minus_sem01_nm`"
+          },
+          {
+           "name": "images",
+           "expression": "`images`"
+          }
+         ]
+        }
+       }
+      ],
+      "spec": {
+       "version": 1,
+       "widgetType": "table",
+       "frame": {
+        "showTitle": true,
+        "title": "SEM tool matching"
+       },
+       "encodings": {
+        "columns": [
+         {
+          "fieldName": "experiment_id",
+          "displayName": "experiment_id"
+         },
+         {
+          "fieldName": "sem01_mean_cd_nm",
+          "displayName": "sem01_mean_cd_nm"
+         },
+         {
+          "fieldName": "sem02_mean_cd_nm",
+          "displayName": "sem02_mean_cd_nm"
+         },
+         {
+          "fieldName": "sem02_minus_sem01_nm",
+          "displayName": "sem02_minus_sem01_nm"
+         },
+         {
+          "fieldName": "images",
+          "displayName": "images"
+         }
+        ]
+       }
+      }
+     },
+     "position": {
+      "x": 3,
+      "y": 12,
+      "width": 3,
+      "height": 7
+     }
+    },
+    {
+     "widget": {
+      "name": "defects",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "defects",
+         "disaggregated": true,
+         "fields": [
+          {
+           "name": "experiment_id",
+           "expression": "`experiment_id`"
+          },
+          {
+           "name": "images",
+           "expression": "`images`"
+          },
+          {
+           "name": "predicted_class",
+           "expression": "`predicted_class`"
+          }
+         ]
+        }
+       }
+      ],
+      "spec": {
+       "version": 3,
+       "widgetType": "bar",
+       "encodings": {
+        "x": {
+         "fieldName": "experiment_id",
+         "scale": {
+          "type": "categorical"
+         },
+         "displayName": "experiment_id"
+        },
+        "y": {
+         "fieldName": "images",
+         "scale": {
+          "type": "quantitative"
+         },
+         "displayName": "images"
+        },
+        "color": {
+         "fieldName": "predicted_class",
+         "scale": {
+          "type": "categorical",
+          "mappings": [
+           {
+            "value": "missing_contact",
+            "color": "#eda100"
+           },
+           {
+            "value": "bridge",
+            "color": "#e87ba4"
+           },
+           {
+            "value": "particle",
+            "color": "#4a3aa7"
+           }
+          ]
+         },
+         "displayName": "predicted_class"
+        }
+       },
+       "frame": {
+        "showTitle": true,
+        "title": "Defect images by experiment"
+       }
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 19,
+      "width": 3,
+      "height": 7
+     }
+    },
+    {
+     "widget": {
+      "name": "lots",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "lots",
+         "disaggregated": true,
+         "fields": [
+          {
+           "name": "experiment_id",
+           "expression": "`experiment_id`"
+          },
+          {
+           "name": "lot_id",
+           "expression": "`lot_id`"
+          },
+          {
+           "name": "images",
+           "expression": "`images`"
+          },
+          {
+           "name": "mean_cd_nm",
+           "expression": "`mean_cd_nm`"
+          },
+          {
+           "name": "lot_cd_sigma_nm",
+           "expression": "`lot_cd_sigma_nm`"
+          },
+          {
+           "name": "cd_fail_pct",
+           "expression": "`cd_fail_pct`"
+          },
+          {
+           "name": "flagged_pct",
+           "expression": "`flagged_pct`"
+          },
+          {
+           "name": "missing_contact_images",
+           "expression": "`missing_contact_images`"
+          },
+          {
+           "name": "bridge_images",
+           "expression": "`bridge_images`"
+          },
+          {
+           "name": "particle_images",
+           "expression": "`particle_images`"
+          }
+         ]
+        }
+       }
+      ],
+      "spec": {
+       "version": 1,
+       "widgetType": "table",
+       "frame": {
+        "showTitle": true,
+        "title": "Lot summary"
+       },
+       "encodings": {
+        "columns": [
+         {
+          "fieldName": "experiment_id",
+          "displayName": "experiment_id"
+         },
+         {
+          "fieldName": "lot_id",
+          "displayName": "lot_id"
+         },
+         {
+          "fieldName": "images",
+          "displayName": "images"
+         },
+         {
+          "fieldName": "mean_cd_nm",
+          "displayName": "mean_cd_nm"
+         },
+         {
+          "fieldName": "lot_cd_sigma_nm",
+          "displayName": "lot_cd_sigma_nm"
+         },
+         {
+          "fieldName": "cd_fail_pct",
+          "displayName": "cd_fail_pct"
+         },
+         {
+          "fieldName": "flagged_pct",
+          "displayName": "flagged_pct"
+         },
+         {
+          "fieldName": "missing_contact_images",
+          "displayName": "missing_contact_images"
+         },
+         {
+          "fieldName": "bridge_images",
+          "displayName": "bridge_images"
+         },
+         {
+          "fieldName": "particle_images",
+          "displayName": "particle_images"
+         }
+        ]
+       }
+      }
+     },
+     "position": {
+      "x": 3,
+      "y": 19,
+      "width": 3,
+      "height": 7
+     }
+    },
+    {
+     "widget": {
+      "name": "outliers",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "outliers",
+         "disaggregated": true,
+         "fields": [
+          {
+           "name": "image_id",
+           "expression": "`image_id`"
+          },
+          {
+           "name": "experiment_id",
+           "expression": "`experiment_id`"
+          },
+          {
+           "name": "lot_id",
+           "expression": "`lot_id`"
+          },
+          {
+           "name": "tool_id",
+           "expression": "`tool_id`"
+          },
+          {
+           "name": "capture_ts",
+           "expression": "`capture_ts`"
+          },
+          {
+           "name": "mean_cd_nm",
+           "expression": "`mean_cd_nm`"
+          },
+          {
+           "name": "z_score",
+           "expression": "`z_score`"
+          },
+          {
+           "name": "cd_spec_status",
+           "expression": "`cd_spec_status`"
+          },
+          {
+           "name": "predicted_class",
+           "expression": "`predicted_class`"
+          }
+         ]
+        }
+       }
+      ],
+      "spec": {
+       "version": 1,
+       "widgetType": "table",
+       "frame": {
+        "showTitle": true,
+        "title": "CD outliers (|z| > 3 within experiment and tool)"
+       },
+       "encodings": {
+        "columns": [
+         {
+          "fieldName": "image_id",
+          "displayName": "image_id"
+         },
+         {
+          "fieldName": "experiment_id",
+          "displayName": "experiment_id"
+         },
+         {
+          "fieldName": "lot_id",
+          "displayName": "lot_id"
+         },
+         {
+          "fieldName": "tool_id",
+          "displayName": "tool_id"
+         },
+         {
+          "fieldName": "capture_ts",
+          "displayName": "capture_ts"
+         },
+         {
+          "fieldName": "mean_cd_nm",
+          "displayName": "mean_cd_nm"
+         },
+         {
+          "fieldName": "z_score",
+          "displayName": "z_score"
+         },
+         {
+          "fieldName": "cd_spec_status",
+          "displayName": "cd_spec_status"
+         },
+         {
+          "fieldName": "predicted_class",
+          "displayName": "predicted_class"
+         }
+        ]
+       }
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 26,
+      "width": 6,
+      "height": 7
+     }
+    }
+   ],
+   "pageType": "PAGE_TYPE_CANVAS"
+  },
+  {
+   "name": "review",
+   "displayName": "Review & audit",
+   "layout": [
+    {
+     "widget": {
+      "name": "hdr3",
+      "multilineTextboxSpec": {
+       "lines": [
+        "## Review & audit\nReplicated from Lakebase to Delta via change data feed. Every action is attributable to an SSO identity."
+       ]
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 0,
+      "width": 6,
+      "height": 2
+     }
+    },
+    {
+     "widget": {
+      "name": "states",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "review_state",
+         "disaggregated": true,
+         "fields": [
+          {
+           "name": "state",
+           "expression": "`state`"
+          },
+          {
+           "name": "images",
+           "expression": "`images`"
+          },
+          {
+           "name": "state",
+           "expression": "`state`"
+          }
+         ]
+        }
+       }
+      ],
+      "spec": {
+       "version": 3,
+       "widgetType": "bar",
+       "encodings": {
+        "x": {
+         "fieldName": "state",
+         "scale": {
+          "type": "categorical"
+         },
+         "displayName": "state"
+        },
+        "y": {
+         "fieldName": "images",
+         "scale": {
+          "type": "quantitative"
+         },
+         "displayName": "images"
+        },
+        "color": {
+         "fieldName": "state",
+         "scale": {
+          "type": "categorical",
+          "mappings": [
+           {
+            "value": "Pending review",
+            "color": "#fab219"
+           },
+           {
+            "value": "Pending approval",
+            "color": "#898781"
+           },
+           {
+            "value": "Approved / Good",
+            "color": "#0ca30c"
+           },
+           {
+            "value": "Rejected / Bad",
+            "color": "#d03b3b"
+           },
+           {
+            "value": "Needs rework",
+            "color": "#ec835a"
+           }
+          ]
+         },
+         "displayName": "state"
+        }
+       },
+       "frame": {
+        "showTitle": true,
+        "title": "Images by review state"
+       }
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 2,
+      "width": 3,
+      "height": 7
+     }
+    },
+    {
+     "widget": {
+      "name": "agree",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "agreement",
+         "disaggregated": true,
+         "fields": [
+          {
+           "name": "model_disposition",
+           "expression": "`model_disposition`"
+          },
+          {
+           "name": "images",
+           "expression": "`images`"
+          },
+          {
+           "name": "reviewer_verdict",
+           "expression": "`reviewer_verdict`"
+          }
+         ]
+        }
+       }
+      ],
+      "spec": {
+       "version": 3,
+       "widgetType": "bar",
+       "encodings": {
+        "x": {
+         "fieldName": "model_disposition",
+         "scale": {
+          "type": "categorical"
+         },
+         "displayName": "model_disposition"
+        },
+        "y": {
+         "fieldName": "images",
+         "scale": {
+          "type": "quantitative"
+         },
+         "displayName": "images"
+        },
+        "color": {
+         "fieldName": "reviewer_verdict",
+         "scale": {
+          "type": "categorical",
+          "mappings": [
+           {
+            "value": "GOOD",
+            "color": "#2a78d6"
+           },
+           {
+            "value": "BAD",
+            "color": "#eb6834"
+           },
+           {
+            "value": "NOT YET",
+            "color": "#898781"
+           }
+          ]
+         },
+         "displayName": "reviewer_verdict"
+        }
+       },
+       "frame": {
+        "showTitle": true,
+        "title": "Model disposition vs reviewer verdict"
+       }
+      }
+     },
+     "position": {
+      "x": 3,
+      "y": 2,
+      "width": 3,
+      "height": 7
+     }
+    },
+    {
+     "widget": {
+      "name": "acts",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "actions",
+         "disaggregated": true,
+         "fields": [
+          {
+           "name": "day",
+           "expression": "`day`"
+          },
+          {
+           "name": "actions",
+           "expression": "`actions`"
+          },
+          {
+           "name": "action",
+           "expression": "`action`"
+          }
+         ]
+        }
+       }
+      ],
+      "spec": {
+       "version": 3,
+       "widgetType": "bar",
+       "encodings": {
+        "x": {
+         "fieldName": "day",
+         "scale": {
+          "type": "categorical"
+         },
+         "displayName": "day"
+        },
+        "y": {
+         "fieldName": "actions",
+         "scale": {
+          "type": "quantitative"
+         },
+         "displayName": "actions"
+        },
+        "color": {
+         "fieldName": "action",
+         "scale": {
+          "type": "categorical"
+         },
+         "displayName": "action"
+        }
+       },
+       "frame": {
+        "showTitle": true,
+        "title": "Review actions per day"
+       }
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 9,
+      "width": 6,
+      "height": 6
+     }
+    },
+    {
+     "widget": {
+      "name": "alog",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "action_log",
+         "disaggregated": true,
+         "fields": [
+          {
+           "name": "action_ts",
+           "expression": "`action_ts`"
+          },
+          {
+           "name": "image_id",
+           "expression": "`image_id`"
+          },
+          {
+           "name": "actor_email",
+           "expression": "`actor_email`"
+          },
+          {
+           "name": "acting_role",
+           "expression": "`acting_role`"
+          },
+          {
+           "name": "action",
+           "expression": "`action`"
+          },
+          {
+           "name": "from_state",
+           "expression": "`from_state`"
+          },
+          {
+           "name": "to_state",
+           "expression": "`to_state`"
+          },
+          {
+           "name": "reason_code",
+           "expression": "`reason_code`"
+          },
+          {
+           "name": "comment",
+           "expression": "`comment`"
+          },
+          {
+           "name": "sod_override",
+           "expression": "`sod_override`"
+          }
+         ]
+        }
+       }
+      ],
+      "spec": {
+       "version": 1,
+       "widgetType": "table",
+       "frame": {
+        "showTitle": true,
+        "title": "Review action log"
+       },
+       "encodings": {
+        "columns": [
+         {
+          "fieldName": "action_ts",
+          "displayName": "action_ts"
+         },
+         {
+          "fieldName": "image_id",
+          "displayName": "image_id"
+         },
+         {
+          "fieldName": "actor_email",
+          "displayName": "actor_email"
+         },
+         {
+          "fieldName": "acting_role",
+          "displayName": "acting_role"
+         },
+         {
+          "fieldName": "action",
+          "displayName": "action"
+         },
+         {
+          "fieldName": "from_state",
+          "displayName": "from_state"
+         },
+         {
+          "fieldName": "to_state",
+          "displayName": "to_state"
+         },
+         {
+          "fieldName": "reason_code",
+          "displayName": "reason_code"
+         },
+         {
+          "fieldName": "comment",
+          "displayName": "comment"
+         },
+         {
+          "fieldName": "sod_override",
+          "displayName": "sod_override"
+         }
+        ]
+       }
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 15,
+      "width": 6,
+      "height": 8
+     }
+    }
+   ],
+   "pageType": "PAGE_TYPE_CANVAS"
+  },
+  {
+   "name": "ops",
+   "displayName": "Pipeline operations",
+   "layout": [
+    {
+     "widget": {
+      "name": "hdr2",
+      "multilineTextboxSpec": {
+       "lines": [
+        "## Pipeline operations\nProcessing runs, throughput and intake validation."
+       ]
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 0,
+      "width": 6,
+      "height": 2
+     }
+    },
+    {
+     "widget": {
+      "name": "runs",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "runs",
+         "disaggregated": true,
+         "fields": [
+          {
+           "name": "ended_ts",
+           "expression": "`ended_ts`"
+          },
+          {
+           "name": "mode",
+           "expression": "`mode`"
+          },
+          {
+           "name": "images_processed",
+           "expression": "`images_processed`"
+          },
+          {
+           "name": "flagged",
+           "expression": "`flagged`"
+          },
+          {
+           "name": "seconds",
+           "expression": "`seconds`"
+          },
+          {
+           "name": "images_per_second",
+           "expression": "`images_per_second`"
+          },
+          {
+           "name": "model_version",
+           "expression": "`model_version`"
+          },
+          {
+           "name": "job_run_id",
+           "expression": "`job_run_id`"
+          }
+         ]
+        }
+       }
+      ],
+      "spec": {
+       "version": 1,
+       "widgetType": "table",
+       "frame": {
+        "showTitle": true,
+        "title": "Processing runs"
+       },
+       "encodings": {
+        "columns": [
+         {
+          "fieldName": "ended_ts",
+          "displayName": "ended_ts"
+         },
+         {
+          "fieldName": "mode",
+          "displayName": "mode"
+         },
+         {
+          "fieldName": "images_processed",
+          "displayName": "images_processed"
+         },
+         {
+          "fieldName": "flagged",
+          "displayName": "flagged"
+         },
+         {
+          "fieldName": "seconds",
+          "displayName": "seconds"
+         },
+         {
+          "fieldName": "images_per_second",
+          "displayName": "images_per_second"
+         },
+         {
+          "fieldName": "model_version",
+          "displayName": "model_version"
+         },
+         {
+          "fieldName": "job_run_id",
+          "displayName": "job_run_id"
+         }
+        ]
+       }
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 2,
+      "width": 4,
+      "height": 7
+     }
+    },
+    {
+     "widget": {
+      "name": "quar",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "quarantine",
+         "disaggregated": true,
+         "fields": [
+          {
+           "name": "reject_reason",
+           "expression": "`reject_reason`"
+          },
+          {
+           "name": "files",
+           "expression": "`files`"
+          }
+         ]
+        }
+       }
+      ],
+      "spec": {
+       "version": 3,
+       "widgetType": "bar",
+       "encodings": {
+        "x": {
+         "fieldName": "reject_reason",
+         "scale": {
+          "type": "categorical"
+         },
+         "displayName": "reject_reason"
+        },
+        "y": {
+         "fieldName": "files",
+         "scale": {
+          "type": "quantitative"
+         },
+         "displayName": "files"
+        }
+       },
+       "frame": {
+        "showTitle": true,
+        "title": "Files rejected at intake"
+       }
+      }
+     },
+     "position": {
+      "x": 4,
+      "y": 2,
+      "width": 2,
+      "height": 7
+     }
+    }
+   ],
+   "pageType": "PAGE_TYPE_CANVAS"
+  }
+ ]
+}

@@ -1,0 +1,39 @@
+resources:
+  apps:
+    fabs_review:
+      name: fabs-metrology-review
+      description: Metrology image review, approval and audit (Lakebase + Delta + AI Gateway)
+      source_code_path: ../app
+      resources:
+        - name: sql-warehouse
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE
+        - name: processing-job
+          job:
+            id: ${resources.jobs.fabs_processing.id}
+            permission: CAN_MANAGE_RUN
+        - name: llm-endpoint
+          serving_endpoint:
+            name: ${var.llm_endpoint}
+            permission: CAN_QUERY
+        - name: lakebase
+          postgres:
+            branch: projects/${var.lakebase_project}/branches/production
+            database: projects/${var.lakebase_project}/branches/production/databases/databricks-postgres
+            permission: CAN_CONNECT_AND_CREATE
+        - name: genie-space
+          genie_space:
+            name: Metrology Process Analyst
+            space_id: ${var.genie_space_id}
+            permission: CAN_RUN
+        - name: landing-volume
+          uc_securable:
+            securable_type: VOLUME
+            securable_full_name: ${var.catalog}.${var.schema}.landing
+            permission: WRITE_VOLUME
+        - name: results-volume
+          uc_securable:
+            securable_type: VOLUME
+            securable_full_name: ${var.catalog}.${var.schema}.results
+            permission: READ_VOLUME
